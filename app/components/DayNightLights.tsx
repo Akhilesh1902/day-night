@@ -1,23 +1,20 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+"use client";
 
+import { Helper } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { useControls } from "leva";
 import { useRef } from "react";
 import * as THREE from "three";
 
-export default function DayNightLights() {
-  const dayLightRef = useRef<THREE.DirectionalLight>(null);
-  const nightLightRef = useRef<THREE.DirectionalLight>(null);
+export default function DayNightLightSingle() {
+  const lightRef = useRef<THREE.DirectionalLight>(null);
   const ambientLightRef = useRef<THREE.AmbientLight>(null);
   const timeRef = useRef(0);
 
   // Define color palette
   const colors = {
-    noon: new THREE.Color(0xffffeb), // Bright white
-    day: new THREE.Color(0xfff4e6), // Warm white
-    sunset: new THREE.Color(0xffaa55), // Orange
-    dusk: new THREE.Color(0xff6600), // Deep orange
-    night: new THREE.Color(0x001133), // Very dark blue
+    noon: new THREE.Color(0xf0dc88),
+    dusk: new THREE.Color(0xf3a76e),
   };
 
   const {
@@ -30,10 +27,7 @@ export default function DayNightLights() {
     dynamicAmbient,
     colorTransitionSpeed,
   } = useControls("Day/Night Cycle", {
-    autoPlay: {
-      value: true,
-      label: "Auto Cycle",
-    },
+    autoPlay: { value: true, label: "Auto Cycle" },
     timeOfDay: {
       value: 0,
       min: 0,
@@ -48,25 +42,21 @@ export default function DayNightLights() {
       step: 0.01,
       label: "Cycle Speed",
     },
-
     dayIntensity: {
-      value: 2,
+      value: 3.5,
       min: 0,
-      max: 5,
+      max: 10,
       step: 0.1,
       label: "Day Intensity",
     },
     nightIntensity: {
       value: 0.5,
       min: 0,
-      max: 2,
+      max: 5,
       step: 0.1,
       label: "Night Intensity",
     },
-    dynamicAmbient: {
-      value: true,
-      label: "Dynamic Ambient Light",
-    },
+    dynamicAmbient: { value: true, label: "Dynamic Ambient Light" },
     ambientIntensity: {
       value: 0.1,
       min: 0,
@@ -82,108 +72,86 @@ export default function DayNightLights() {
       label: "Color Transition Speed",
     },
   });
+  const radius = 10;
+  const hoursToRadians = (hours: number) =>
+    (hours / 24) * Math.PI * 2 - Math.PI / 2;
 
   useFrame((state, delta) => {
-    const hoursToRadians = (hours: number) =>
-      (hours / 24) * Math.PI * 2 - Math.PI / 2;
-
     if (autoPlay) {
       const hourIncrement = (delta * cycleSpeed * 24) / (Math.PI * 2);
       timeRef.current += hourIncrement;
-
-      if (timeRef.current >= 24) {
-        timeRef.current = 0;
-      }
+      if (timeRef.current >= 24) timeRef.current = 0;
     } else {
       timeRef.current = timeOfDay;
     }
 
-    const radius = 15;
-    const angle = hoursToRadians(timeRef.current);
-
+    const angle = hoursToRadians(timeRef.current) + Math.PI / 2;
+    // console.log(angle);
+    // Calculate day position
     const dayX = Math.cos(angle) * radius;
-    const dayY = Math.sin(angle) * radius;
-    const dayZ = 5;
+    const dayY = Math.abs(Math.sin(angle) * radius);
+    // const dayZ = -5;
+    const dayZ = Math.sin(angle) * radius;
 
-    const nightX = -dayX;
-    const nightY = -dayY;
-    const nightZ = dayZ;
+    // Oscillate between day and night positions
+    // For night, use opposite direction
+    const sunHeight =
+      Math.sin(angle + Math.PI / 2) + Math.sin(angle + Math.PI / 4) * 0.5;
+    // const isDay = sunHeight > 0;
+    const isDay = true;
 
-    if (dayLightRef.current) {
-      dayLightRef.current.position.set(dayX, dayY, dayZ);
-
-      const intensity = Math.max(
-        0,
-        Math.sin(angle + Math.PI / 2) * dayIntensity
-      );
-      dayLightRef.current.intensity = intensity;
-      // Smooth color transitions using lerp
-      const sunHeight = Math.sin(angle + Math.PI / 2);
-      let targetColor;
-
-      if (sunHeight > 0.8) {
-        // High noon - bright white
-        targetColor = colors.noon;
-      } else if (sunHeight > 0.5) {
-        // Mid-day - lerp between noon and day
-        const t = (sunHeight - 0.5) / 0.3;
-        targetColor = colors.day.clone().lerp(colors.noon, t);
-      } else if (sunHeight > 0.2) {
-        // Morning/Afternoon - lerp between day and sunset
-        const t = (sunHeight - 0.2) / 0.3;
-        targetColor = colors.sunset.clone().lerp(colors.day, t);
-      } else if (sunHeight > 0) {
-        // Sunset/Sunrise - lerp between dusk and sunset
-        const t = sunHeight / 0.2;
-        targetColor = colors.dusk.clone().lerp(colors.sunset, t);
-      } else if (sunHeight > -0.2) {
-        // Twilight - lerp between night and dusk
-        const t = (sunHeight + 0.2) / 0.2;
-        targetColor = colors.night.clone().lerp(colors.dusk, t);
+    // Set position based on day/night
+    if (lightRef.current) {
+      if (isDay) {
+        lightRef.current.position.set(dayX, dayY, dayZ);
       } else {
-        // Deep night
-        targetColor = colors.night;
+        lightRef.current.position.set(-dayX, -dayY, dayZ);
       }
 
-      // Smoothly interpolate to target color
-      dayLightRef.current.color.lerp(targetColor, colorTransitionSpeed);
+      const dayColor = colors.noon; // bright sunny color
+      const duskColor = colors.dusk;
+
+      // Color blending based on sunHeight for smooth transitions
+      let targetColor;
+
+      const easeInOutCubic = (x: number) =>
+        x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+
+      if (sunHeight > 0) {
+        let t = Math.min(sunHeight * 0.1, 1);
+        t = easeInOutCubic(t);
+        targetColor = duskColor.clone().lerp(dayColor, t);
+      } else {
+        targetColor = duskColor.clone();
+      }
+      lightRef.current.intensity = dayIntensity;
+
+      if (lightRef.current) {
+        lightRef.current.color.lerp(targetColor, colorTransitionSpeed);
+      }
+
+      lightRef.current.color.lerp(targetColor, colorTransitionSpeed);
     }
 
-    if (nightLightRef.current) {
-      nightLightRef.current.position.set(nightX, nightY, nightZ);
-
-      const intensity = Math.max(
-        0,
-        -Math.sin(angle + Math.PI / 2) * nightIntensity
-      );
-      nightLightRef.current.intensity = intensity;
-    }
-
-    // Dynamic ambient light based on time of day
+    // Dynamic ambient
     if (ambientLightRef.current && dynamicAmbient) {
-      const sunHeight = Math.sin(angle + Math.PI / 2);
-
       if (sunHeight > 0.5) {
-        // Day - brighter ambient
         ambientLightRef.current.intensity = ambientIntensity * 2;
       } else if (sunHeight > 0) {
-        // Sunrise/Sunset - medium ambient
         ambientLightRef.current.intensity = ambientIntensity * 1.5;
       } else {
-        // Night - darker ambient
         ambientLightRef.current.intensity = ambientIntensity * 0.5;
       }
     } else if (ambientLightRef.current) {
-      // Static ambient
       ambientLightRef.current.intensity = ambientIntensity;
     }
   });
 
   return (
     <>
-      {/* Day Light (Sun) */}
+      {/* Single Directional Light (Sun/Moon as one) */}
       <directionalLight
-        ref={dayLightRef}
+        ref={lightRef}
         castShadow
         shadow-mapSize={[2048, 2048]}
         shadow-camera-far={50}
@@ -193,23 +161,11 @@ export default function DayNightLights() {
         shadow-camera-bottom={-20}>
         {/* <Helper
           type={THREE.DirectionalLightHelper}
-          args={[dayLightRef.current]}
+          // @ts-expect-error : Ignore type issue
+          // eslint-disable-next-line react-hooks/refs
+          args={[lightRef.current]}
         /> */}
       </directionalLight>
-
-      {/* Night Light (Moon) */}
-      <directionalLight
-        ref={nightLightRef}
-        color="#5577aa"
-        castShadow
-        shadow-mapSize={[2048, 2048]}
-        shadow-camera-far={50}
-        shadow-camera-left={-20}
-        shadow-camera-right={20}
-        shadow-camera-top={20}
-        shadow-camera-bottom={-20}
-      />
-
       {/* Ambient Light */}
       <ambientLight
         ref={ambientLightRef}
